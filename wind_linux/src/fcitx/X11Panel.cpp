@@ -1413,6 +1413,56 @@ std::optional<Rect> X11CandidatePanel::screenWorkArea()
     return workArea();
 }
 
+std::optional<std::pair<int32_t, int32_t>> X11CandidatePanel::screenPixelSize()
+{
+    if (!conn_) {
+        ensureConnection();
+    }
+    if (!connectionUsable() || !screen_ || screen_->width_in_pixels < 200
+        || screen_->height_in_pixels < 200) {
+        return std::nullopt;
+    }
+    return std::make_pair(int32_t(screen_->width_in_pixels), int32_t(screen_->height_in_pixels));
+}
+
+std::optional<Rect> X11CandidatePanel::activeWindowFrame()
+{
+    if (!connectionUsable()) {
+        return std::nullopt;
+    }
+    xcb_window_t w = activeWindow_;
+    if (w == XCB_NONE && atomActiveWindow_) {
+        auto ck = xcb_get_property(conn_, 0, screen_->root, atomActiveWindow_, XCB_ATOM_WINDOW, 0, 1);
+        if (auto* r = xcb_get_property_reply(conn_, ck, nullptr)) {
+            if (r->format == 32 && xcb_get_property_value_length(r) >= 4) {
+                w = *static_cast<const xcb_window_t*>(xcb_get_property_value(r));
+            }
+            std::free(r);
+        }
+    }
+    if (w == XCB_NONE || ownsWindow(w)) {
+        return std::nullopt;
+    }
+    // get_geometry 的 x/y 相对父窗口；窗口管理器再父之后那不是根坐标。平移到根窗口。
+    auto tck = xcb_translate_coordinates(conn_, w, screen_->root, 0, 0);
+    auto* tr = xcb_translate_coordinates_reply(conn_, tck, nullptr);
+    if (!tr) {
+        return std::nullopt;
+    }
+    const int32_t x = tr->dst_x;
+    const int32_t y = tr->dst_y;
+    std::free(tr);
+    auto gck = xcb_get_geometry(conn_, w);
+    auto* gr = xcb_get_geometry_reply(conn_, gck, nullptr);
+    if (!gr || gr->width == 0 || gr->height == 0) {
+        std::free(gr);
+        return std::nullopt;
+    }
+    Rect frame{x, y, int32_t(gr->width), int32_t(gr->height)};
+    std::free(gr);
+    return frame;
+}
+
 std::optional<std::pair<int32_t, int32_t>> X11CandidatePanel::pointerPosition()
 {
     // 只读现有连接、不重连：调用方有计时器回调与 X 事件回调（菜单收起后重定悬停…），在那里

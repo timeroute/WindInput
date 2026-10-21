@@ -79,12 +79,25 @@ private:
 /// 坐标系：屏幕左上为原点、y 向下（X11 根窗口坐标 = wire 坐标）。
 Rect placePanel(int32_t x, int32_t y, int32_t w, int32_t h, const Rect& workArea, bool absolute);
 
-/// Wayland 会话下，GTK/Qt 前端把光标矩形按 `scale` 乘成**设备像素**再交给 Fcitx
-/// （`SetCursorRectV2` / `devicePixelRatio`）；XWayland 根窗口与 `ConfigureWindow` 用的却是
-/// **合成器逻辑像素**。把设备像素折回逻辑像素，候选窗才跟得上光标——否则落点偏小，再叠加
-/// 按 scale 放大的位图，就容易被 `placePanel` 钳到工作区左上角（GH#215）。
-/// `scale <= 1.01` 时原样返回。
-std::pair<int32_t, int32_t> x11RootFromDevice(int32_t deviceX, int32_t deviceY, double scale);
+/// Mutter 的 `scale-monitor-framebuffer`：X 根窗口的协议像素 = 逻辑像素 × N，
+/// N 是**所有显示器缩放里最大那个的向上取整**，整屏共用——一块屏开了 150%/166%，
+/// 另一块 100% 的协议坐标也一起变大（GH#215：两块屏同时错，直到缩放屏回到 100%）。
+/// `xRoot` 是 X 屏宽高，`logical` 是 Wayland xdg-output 逻辑布局的包围盒。
+/// 比值接近整数时取该整数（166% → 2）；看不出放大（纯 X11、全 100%、KWin 未放大 X）返回 1。
+double xProtocolScale(int32_t xRootW, int32_t xRootH, int32_t logicalW, int32_t logicalH);
+
+/// 把客户端光标乘进 X 协议坐标要用的倍数。`protocolScale` 见 `xProtocolScale`，
+/// `clientScale` 是 `InputContext::scaleFactor()`（GTK Wayland 已经把矩形乘过这个数，1 表示没乘）。
+/// 返回值 ≤ 1.01 表示不用乘。
+double proposedCaretFactor(double protocolScale, double clientScale);
+
+/// 在 `proposedCaretFactor` 的结果上决定到底乘不乘：
+/// - 原始点落在当前 X 焦点窗口里、乘完反而不在 → 已经是协议坐标，返回 1
+///   （GTK 的 X11 路径经 `XTranslateCoordinates`，本身就是协议坐标）；
+/// - 只有乘完才落进焦点窗口 → 返回 `proposed`（应用报的是逻辑坐标）；
+/// - 两边都在 → 返回 1（窗口大到两个点都装得下，信原始坐标）；
+/// - 两边都不在：X11 客户端返回 1；Wayland 客户端（没有对应的 X 窗）返回 `proposed`。
+double chooseCaretFactor(double proposed, bool x11Client, bool rawInside, bool scaledInside);
 
 /// 光栅浮层（CMD_OVERLAY_FRAME）的落位：返回**窗口**矩形（尺寸 = 位图尺寸）。服务端拿不到
 /// 屏幕几何，只给「首选点 + 备选点」或「锚点 + 留白」，这里按工作区选定，公式逐条对位

@@ -101,6 +101,12 @@ public:
     double hostScale();
     /// 工作区（根窗口，不分显示器）。还没连上 / 连接已坏时返回空（不在这里重连）。
     std::optional<Rect> screenWorkArea();
+    /// X 根窗口的协议像素尺寸（`width_in_pixels` × `height_in_pixels`）。
+    /// Mutter 分数缩放下这是逻辑布局 × N，不是 Wayland 的逻辑尺寸。还没连上时返回空。
+    std::optional<std::pair<int32_t, int32_t>> screenPixelSize();
+    /// 当前 `_NET_ACTIVE_WINDOW` 在根窗口坐标里的矩形（客户区）。用来判断光标已经是
+    /// 协议坐标还是还停在逻辑坐标（见 `chooseCaretFactor`）。没有焦点窗 / 连接不可用时返回空。
+    std::optional<Rect> activeWindowFrame();
     /// 当前指针位置（根窗口坐标）。还没连上 / 连接已坏时返回空（不在这里重连）。
     std::optional<std::pair<int32_t, int32_t>> pointerPosition();
     /// 屏幕点所在输出的 RandR 名字与工作区（输出矩形 ∩ `_NET_WORKAREA`）。没有 RandR、连接不可用、

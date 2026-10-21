@@ -388,7 +388,8 @@ pub mod ext_kind {
     /// - `scale`：界面缩放因子（1.0 = 96dpi）。服务不链接桌面库，Linux 上的缩放只能由宿主报：
     ///   Wayland 会话取输出缩放（分数缩放经 xdg-output；贴图侧用 buffer scale / viewporter
     ///   折回逻辑尺寸），纯 X11 取 `Xft.dpi / 96`。落在 `wind_ui::dpi`，所有浮层的字号与几何
-    ///   都从它派生。XWayland 落点另把设备像素光标折回逻辑根坐标（见 `x11RootFromDevice`）。
+    ///   都从它派生。GNOME 分数缩放下 XWayland 候选窗改报协议缩放 N（ceil(最大缩放)），
+    ///   与 X 根窗口的协议像素对齐（见 `xProtocolScale`）。
     /// - `output`：焦点所在输出（显示器）名，如 `"DP-1"`；缺省 = 不改现值。
     /// - `work`：该输出的工作区 `[左,上,右,下]`（屏幕坐标，同 [`MENU_OPEN`] 的 `work`），工具栏 /
     ///   软键盘的默认落点按它算。与 `output` 成对：报了其一，工作区就按本次替换（只报 `output` = 工作区未知），

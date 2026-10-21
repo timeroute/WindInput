@@ -514,6 +514,57 @@ uint64_t WindEngine::inputScopeMask(fcitx::InputContext* ic) const
         : 0;
 }
 
+double WindEngine::xWaylandProtocolScale() const
+{
+#ifdef WIND_HAVE_WAYLAND
+    if (!wlPanel_ || !panel_) {
+        return 1.0;
+    }
+    const auto logical = wlPanel_->logicalLayoutSize();
+    const auto xroot = panel_->screenPixelSize();
+    if (!logical || !xroot) {
+        return 1.0;
+    }
+    return xProtocolScale(xroot->first, xroot->second, logical->first, logical->second);
+#else
+    return 1.0;
+#endif
+}
+
+void WindEngine::mapCaretToX(fcitx::InputContext* ic, int& x, int& y, int& h) const
+{
+    if (!ic || !panel_) {
+        return;
+    }
+#ifdef WIND_HAVE_WAYLAND
+    // 合成器自己摆 popup，光标不参与落点。乘了只会把 tooltip 的相对坐标带偏。
+    if (wlPanel_ && wlPanel_->handles(ic)) {
+        return;
+    }
+#endif
+    const double proposed = proposedCaretFactor(xWaylandProtocolScale(), ic->scaleFactor());
+    if (!(proposed > 1.01)) {
+        return;
+    }
+    bool rawInside = false;
+    bool scaledInside = false;
+    if (const auto frame = panel_->activeWindowFrame()) {
+        const int sx = int(std::lround(x * proposed));
+        const int sy = int(std::lround(y * proposed));
+        rawInside = rectContains(*frame, x, y);
+        scaledInside = rectContains(*frame, sx, sy);
+    }
+    const std::string display = ic->display();
+    const bool x11Client = display.rfind("x11", 0) == 0;
+    const double factor = chooseCaretFactor(proposed, x11Client, rawInside, scaledInside);
+    if (!(factor > 1.01)) {
+        return;
+    }
+    x = int(std::lround(x * factor));
+    y = int(std::lround(y * factor));
+    h = std::max(1, int(std::lround(h * factor)));
+}
+
 void WindEngine::sendHostDisplay(fcitx::InputContext* ic)
 {
     // 告诉服务端当前焦点宿主的显示环境，两样都随焦点变：
@@ -521,9 +572,9 @@ void WindEngine::sendHostDisplay(fcitx::InputContext* ic)
     //  · 界面缩放：服务端按它光栅化（字号 / 几何都是缩放后的物理像素）。
     // 每次获焦都重报（X11 应用报 false），免得上一个焦点的状态留在服务端；服务重启也不丢。
     //
-    // 缩放来源：Wayland 会话优先用输出缩放（xdg-output，分数缩放准）；否则 Xft.dpi / GDK_SCALE。
-    // XWayland 焦点也要报真实缩放，否则候选窗按 1× 光栅、在 HiDPI 下显得过小。落点另见
-    // sendCaretUpdate：设备像素光标要折回 X11 逻辑根坐标（GH#215）。
+    // 缩放：候选窗走 X 窗口时（GNOME 不给第三方输入法开 Wayland 协议，原生应用也走这条），
+    // Mutter 分数缩放把整屏协议坐标放大到 N = ceil(最大缩放)。位图必须按 N 光栅，合成器再
+    // 除以 N，看起来才是逻辑尺寸。没有这层放大时仍用输出的分数缩放（viewporter 折回）。
     if (!ensureConnected()) {
         return;
     }
@@ -531,17 +582,27 @@ void WindEngine::sendHostDisplay(fcitx::InputContext* ic)
     double scale = panel_->hostScale();
 #ifdef WIND_HAVE_WAYLAND
     if (wlPanel_) {
-        // 输出缩放覆盖 Xft：GNOME 分数缩放时 Xft.dpi 可能仍是 96，而 wl_output/xdg-output 才准。
-        scale = wlPanel_->scale();
-        if (wlPanel_->handles(ic)) {
+        const double output = wlPanel_->scale();
+        const double protocol = xWaylandProtocolScale();
+        const bool x11Window = !wlPanel_->handles(ic);
+        if (x11Window && protocol > 1.01) {
+            scale = protocol;
+        } else {
+            scale = output > 0 ? output : scale;
+        }
+        if (!x11Window) {
             caretFree = true;
         }
         // layer-shell 上的气泡、Toast、工具栏、软键盘不论焦点在哪种应用都按这个缩放光栅化，
         // 贴图时要按同一个数折回逻辑尺寸。
         wlPanel_->setReportedScale(scale);
+        static double logged = 0;
+        if (protocol > 1.01 && protocol != logged) {
+            logged = protocol;
+            WIND_INFO() << "XWayland 协议缩放 " << protocol << "，候选窗光栅 " << scale;
+        }
     }
 #endif
-    lastHostScale_ = scale;
     // 光标可信恒为真：Linux 的光标矩形来自应用自己上报（没有 Windows 那种跨窗口光标冒充插入点
     // 的问题），只是来源字段没有 TSF 那套语义可填。不声明的话服务端「焦点变化时显示」永远挂起。
     // 内嵌预编辑看客户端的 Preedit 能力位：没有的话编码由服务端画进候选窗（见 ICSink::setPreedit）。
@@ -570,7 +631,11 @@ HostOutput WindEngine::hostOutput(fcitx::InputContext* ic)
     std::optional<std::pair<int32_t, int32_t>> at;
     const fcitx::Rect& caret = ic->cursorRect();
     if (caret.left() != 0 || caret.top() != 0 || caret.width() != 0 || caret.height() != 0) {
-        at = std::make_pair(caret.left(), caret.top());
+        int x = caret.left();
+        int y = caret.top();
+        int h = caret.height() > 0 ? caret.height() : 16;
+        mapCaretToX(ic, x, y, h);
+        at = std::make_pair(x, y);
     } else {
         at = panel_->pointerPosition();
     }
@@ -610,20 +675,9 @@ void WindEngine::sendCaretUpdate(fcitx::InputContext* ic)
     int x = r.left();
     int y = r.top();
     int h = r.height() > 0 ? r.height() : 16;
-#ifdef WIND_HAVE_WAYLAND
-    // Wayland 会话里走 X11 候选窗时（GNOME / XWayland 应用）：GTK/Qt 报来的光标是设备像素
-    // （已 × scaleFactor），XCB 摆窗却要逻辑根坐标。折回后再交给服务端算 screen_x/y，
-    // 位图仍按 lastHostScale_ 光栅（更大更清晰），两者单位对齐就不会漂到左上角。
-    if (wlPanel_) {
-        const double sc = std::max(lastHostScale_, ic->scaleFactor());
-        if (sc > 1.01) {
-            const auto [lx, ly] = x11RootFromDevice(x, y, sc);
-            x = lx;
-            y = ly;
-            h = std::max(1, int(std::lround(h / sc)));
-        }
-    }
-#endif
+    // GNOME 分数缩放：X 窗口的坐标是协议像素（逻辑 × N），应用常常仍报逻辑坐标。
+    // 不乘的话落点大约只有应有位置的 1/N，候选窗漂向左上角（GH#215）。
+    mapCaretToX(ic, x, y, h);
     sendAndDrain(encodeCaretUpdateFrame(x, y, h));
 }
 

@@ -97,6 +97,10 @@ private:
     /// `pos.*` 用同一来源的名字（`reportPanelPos` 的 output），两处要么都报要么都不报。
     HostOutput hostOutput(fcitx::InputContext* ic);
     void sendCaretUpdate(fcitx::InputContext* ic);
+    /// XWayland 协议坐标相对 Wayland 逻辑布局的倍数（Mutter 分数缩放 = ceil(最大缩放)，否则 1）。
+    double xWaylandProtocolScale() const;
+    /// 候选窗走 X11 窗口（不是合成器摆的 popup）时，把光标从客户端单位乘进 X 协议坐标。
+    void mapCaretToX(fcitx::InputContext* ic, int& x, int& y, int& h) const;
     uint16_t prevCharFor(fcitx::InputContext* ic);
     /// 修饰键单击 / CapsLock 状态通知：发一帧 eventType=UP 的 KeyEvent 并应用其响应。
     /// `toggles` 必须是真实锁定态——服务端拿**每一帧**的 toggles 校准大写锁定镜像，
@@ -180,9 +184,6 @@ private:
     ShmFrameReader panelShm_[2];
     FullscreenReporter fullscreen_;
     std::unique_ptr<X11CandidatePanel> panel_;
-    /// 最近一次 `host.display` 上报的界面缩放（1.0 = 100%）。`sendCaretUpdate` 在 Wayland
-    /// 会话里把设备像素光标折回 X11 逻辑坐标时用。
-    double lastHostScale_ = 1.0;
     /// Wayland 原生应用（frontend wayland_v2）的候选窗：popup surface，由合成器摆位。没有 Wayland
     /// 支持（编译时缺 libwayland）或不在 Wayland 会话时为空。
 #ifdef WIND_HAVE_WAYLAND

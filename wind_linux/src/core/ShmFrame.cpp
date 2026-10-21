@@ -101,12 +101,59 @@ bool ShmFrameReader::snapshot(SharedFrame& out) const
     return true;
 }
 
-std::pair<int32_t, int32_t> x11RootFromDevice(int32_t deviceX, int32_t deviceY, double scale)
+namespace {
+
+double snapProtocolScale(double n)
 {
-    if (!(scale > 1.01)) {
-        return {deviceX, deviceY};
+    if (!(n > 1.05) || n > 4.0) {
+        return 1.0;
     }
-    return {int32_t(std::lround(deviceX / scale)), int32_t(std::lround(deviceY / scale))};
+    const double rounded = std::round(n);
+    if (rounded >= 1.0 && std::abs(n - rounded) < 0.12) {
+        return rounded;
+    }
+    return std::round(n * 100.0) / 100.0;
+}
+
+} // namespace
+
+double xProtocolScale(int32_t xRootW, int32_t xRootH, int32_t logicalW, int32_t logicalH)
+{
+    // 太小的尺寸是还没收到 xdg-output / 连接未就绪，别拿它算出一个荒唐倍数。
+    if (xRootW < 200 || xRootH < 200 || logicalW < 200 || logicalH < 200) {
+        return 1.0;
+    }
+    const double sx = snapProtocolScale(double(xRootW) / double(logicalW));
+    const double sy = snapProtocolScale(double(xRootH) / double(logicalH));
+    // 横排双屏比值在宽上，竖排在高上；两边不一致时取较大的那个（没放大的轴会得到 1）。
+    return std::max(sx, sy);
+}
+
+double proposedCaretFactor(double protocolScale, double clientScale)
+{
+    if (!(protocolScale > 1.01)) {
+        return 1.0;
+    }
+    const double sf = clientScale > 1.01 ? clientScale : 1.0;
+    const double factor = protocolScale / sf;
+    return factor > 1.01 ? factor : 1.0;
+}
+
+double chooseCaretFactor(double proposed, bool x11Client, bool rawInside, bool scaledInside)
+{
+    if (!(proposed > 1.01)) {
+        return 1.0;
+    }
+    if (rawInside && !scaledInside) {
+        return 1.0;
+    }
+    if (scaledInside && !rawInside) {
+        return proposed;
+    }
+    if (rawInside && scaledInside) {
+        return 1.0;
+    }
+    return x11Client ? 1.0 : proposed;
 }
 
 Rect placePanel(int32_t x, int32_t y, int32_t w, int32_t h, const Rect& wa, bool absolute)

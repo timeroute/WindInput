@@ -195,20 +195,36 @@ void TestPlacement()
     r = placePanel(100, 100, 300, 1000, Rect{0, 0, 1920, 1080}, false);
     CHECK(r.y >= 0 && r.y + 1000 <= 1080);
 
-    // 位图大于工作区时两轴都会钳到原点——Wayland 下若把「设备像素」光标当逻辑坐标去摆，
-    // 再叠加按 scale 放大的位图，就容易命中这个症状（GH#215）。
+    // 位图两轴都大于工作区时钳到原点。正常候选窗到不了这个尺寸；别用它解释 GH#215。
     CASE("位图大于工作区 → 钳到左上角");
     r = placePanel(500, 400, 2000, 1200, wa, false);
     CHECK_EQ(r.x, 0);
     CHECK_EQ(r.y, 0);
 
-    CASE("设备像素光标 → X11 逻辑根坐标（GH#215）");
+    // GH#215：166% 时 Mutter 把 X 协议坐标放大到 ceil(1.66)=2，整屏共用。
+    CASE("X 协议缩放：166% 双屏是 2，100% 是 1");
     {
-        auto [x, y] = x11RootFromDevice(830, 498, 1.66);
-        CHECK_EQ(x, 500);
-        CHECK_EQ(y, 300);
-        auto [x1, y1] = x11RootFromDevice(500, 300, 1.0);
-        CHECK(x1 == 500 && y1 == 300);
+        CHECK(xProtocolScale(3840, 2160, 1920, 1080) == 2.0);
+        // 一块 1920 逻辑 + 一块 1280 逻辑（150% 的物理屏在 xdg-output 里仍是逻辑尺寸），
+        // X 根窗口是逻辑包围盒 × 2。
+        CHECK(xProtocolScale((1920 + 1280) * 2, 1080 * 2, 1920 + 1280, 1080) == 2.0);
+        CHECK(xProtocolScale(1920, 1080, 1920, 1080) == 1.0);
+        CHECK(xProtocolScale(100, 100, 1920, 1080) == 1.0); // 尺寸还没就绪
+    }
+
+    CASE("光标倍数：协议 2、客户端已乘过 2 就不再乘");
+    {
+        CHECK(proposedCaretFactor(2.0, 1.0) == 2.0);
+        CHECK(proposedCaretFactor(2.0, 2.0) == 1.0);
+        CHECK(proposedCaretFactor(1.0, 1.0) == 1.0);
+        // 原始点已在 X 窗里：GTK X11 的协议坐标，别再乘。
+        CHECK(chooseCaretFactor(2.0, true, true, false) == 1.0);
+        // 只有乘完才进窗：应用报的是逻辑坐标。
+        CHECK(chooseCaretFactor(2.0, true, false, true) == 2.0);
+        // 没有对应 X 窗：Wayland 客户端乘，X11 客户端不乘。
+        CHECK(chooseCaretFactor(2.0, false, false, false) == 2.0);
+        CHECK(chooseCaretFactor(2.0, true, false, false) == 1.0);
+        CHECK(chooseCaretFactor(1.0, false, false, false) == 1.0);
     }
 }
 
