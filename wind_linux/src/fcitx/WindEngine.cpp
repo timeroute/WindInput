@@ -22,7 +22,9 @@
 #include <fcitx/userinterface.h>
 #include <fcitx/userinterfacemanager.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <unistd.h>
@@ -519,27 +521,27 @@ void WindEngine::sendHostDisplay(fcitx::InputContext* ic)
     //  · 界面缩放：服务端按它光栅化（字号 / 几何都是缩放后的物理像素）。
     // 每次获焦都重报（X11 应用报 false），免得上一个焦点的状态留在服务端；服务重启也不丢。
     //
-    // X11 / XWayland 的 scale **恒为 1.0**：根窗口坐标与 XCB 窗口尺寸同单位（像素），
-    // wind-ui 的 `px_per_unit` 在 Linux 上也是 1；没有 viewporter 把放大位图折回逻辑尺寸。
-    // 曾按 `Xft.dpi` / `GDK_SCALE` 上报（150%/166% 等）→ 服务端把候选窗光栅成更大位图 →
-    // `placePanel` 相对根窗口工作区一钳就把窗口钉到左上角（GH#215）。
-    // 只有 Wayland 原生焦点才取输出缩放：贴图侧用 buffer scale / wp_viewporter 折回逻辑尺寸。
+    // 缩放来源：Wayland 会话优先用输出缩放（xdg-output，分数缩放准）；否则 Xft.dpi / GDK_SCALE。
+    // XWayland 焦点也要报真实缩放，否则候选窗按 1× 光栅、在 HiDPI 下显得过小。落点另见
+    // sendCaretUpdate：设备像素光标要折回 X11 逻辑根坐标（GH#215）。
     if (!ensureConnected()) {
         return;
     }
     bool caretFree = false;
-    double scale = 1.0;
+    double scale = panel_->hostScale();
 #ifdef WIND_HAVE_WAYLAND
-    if (wlPanel_ && wlPanel_->handles(ic)) {
-        caretFree = true;
-        scale = wlPanel_->scale();
-    }
     if (wlPanel_) {
+        // 输出缩放覆盖 Xft：GNOME 分数缩放时 Xft.dpi 可能仍是 96，而 wl_output/xdg-output 才准。
+        scale = wlPanel_->scale();
+        if (wlPanel_->handles(ic)) {
+            caretFree = true;
+        }
         // layer-shell 上的气泡、Toast、工具栏、软键盘不论焦点在哪种应用都按这个缩放光栅化，
-        // 贴图时要按同一个数折回逻辑尺寸。XWayland 焦点时与上面同为 1.0（见设计文档已知限制）。
+        // 贴图时要按同一个数折回逻辑尺寸。
         wlPanel_->setReportedScale(scale);
     }
 #endif
+    lastHostScale_ = scale;
     // 光标可信恒为真：Linux 的光标矩形来自应用自己上报（没有 Windows 那种跨窗口光标冒充插入点
     // 的问题），只是来源字段没有 TSF 那套语义可填。不声明的话服务端「焦点变化时显示」永远挂起。
     // 内嵌预编辑看客户端的 Preedit 能力位：没有的话编码由服务端画进候选窗（见 ICSink::setPreedit）。
@@ -604,10 +606,25 @@ void WindEngine::sendCaretUpdate(fcitx::InputContext* ic)
     if (r.height() <= 0 && r.width() <= 0 && r.left() == 0 && r.top() == 0) {
         return; // 宿主没报过光标位置：宁可不报，也别把候选窗钉到屏幕左上角
     }
-    // X11 客户端报的是根窗口坐标（物理像素、左上原点、y 向下），正是 wire 坐标系。
     // y 取行顶、height 取行高（对位 Swift `CaretCoords.caretRectToWire`）。
+    int x = r.left();
+    int y = r.top();
     int h = r.height() > 0 ? r.height() : 16;
-    sendAndDrain(encodeCaretUpdateFrame(r.left(), r.top(), h));
+#ifdef WIND_HAVE_WAYLAND
+    // Wayland 会话里走 X11 候选窗时（GNOME / XWayland 应用）：GTK/Qt 报来的光标是设备像素
+    // （已 × scaleFactor），XCB 摆窗却要逻辑根坐标。折回后再交给服务端算 screen_x/y，
+    // 位图仍按 lastHostScale_ 光栅（更大更清晰），两者单位对齐就不会漂到左上角。
+    if (wlPanel_) {
+        const double sc = std::max(lastHostScale_, ic->scaleFactor());
+        if (sc > 1.01) {
+            const auto [lx, ly] = x11RootFromDevice(x, y, sc);
+            x = lx;
+            y = ly;
+            h = std::max(1, int(std::lround(h / sc)));
+        }
+    }
+#endif
+    sendAndDrain(encodeCaretUpdateFrame(x, y, h));
 }
 
 uint16_t WindEngine::prevCharFor(fcitx::InputContext* ic)

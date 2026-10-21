@@ -195,14 +195,21 @@ void TestPlacement()
     r = placePanel(100, 100, 300, 1000, Rect{0, 0, 1920, 1080}, false);
     CHECK(r.y >= 0 && r.y + 1000 <= 1080);
 
-    // 回归：若 host.display 误报 scale>1，服务端会按该因子放大位图；位图相对根窗口工作区
-    // 过大时 placePanel 两轴都钳到 wa 原点 → 候选窗钉在左上角（GH#215，分数缩放 150%/166%）。
-    // 修复是 X11/XWayland 恒报 scale=1，这里钉住「过大 → 左上角」的症状，免得以后改落位算法时
-    // 悄悄变成别的坏行为却以为修好了。
-    CASE("位图大于工作区 → 钳到左上角（GH#215 症状）");
+    // 位图大于工作区时两轴都会钳到原点——Wayland 下若把「设备像素」光标当逻辑坐标去摆，
+    // 再叠加按 scale 放大的位图，就容易命中这个症状（GH#215）。
+    CASE("位图大于工作区 → 钳到左上角");
     r = placePanel(500, 400, 2000, 1200, wa, false);
     CHECK_EQ(r.x, 0);
     CHECK_EQ(r.y, 0);
+
+    CASE("设备像素光标 → X11 逻辑根坐标（GH#215）");
+    {
+        auto [x, y] = x11RootFromDevice(830, 498, 1.66);
+        CHECK_EQ(x, 500);
+        CHECK_EQ(y, 300);
+        auto [x1, y1] = x11RootFromDevice(500, 300, 1.0);
+        CHECK(x1 == 500 && y1 == 300);
+    }
 }
 
 OverlayFramePayload overlay(uint32_t place, int32_t x, int32_t y, int32_t altX, int32_t altY)

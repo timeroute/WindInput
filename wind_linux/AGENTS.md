@@ -341,7 +341,7 @@ forwardKey 对某类应用确实无效时才值得做，目前没有这样的证
 | 小键盘 / 符号键映射 | keysym 走 US 布局反查 | 非 US 布局的 Shift 符号键（如德语 `§`）没有 VK，透传给宿主 |
 | 彩色 emoji | 已接（服务端文字后端） | CBDT（Noto Color Emoji）、COLR v0/v1、OpenType-SVG 实测可画；肤色 / ZWJ / 国旗 / 键帽按字体 GSUB 合成一个字形。依赖系统装彩色 emoji 字体（`.deb` Recommends `fonts-noto-color-emoji`），没有时画单色字形或方框。sbix 未实测、COLR v1 扫掠渐变降级为纯色，见 `wind-ui/src/text/linux/mod.rs` 模块头 |
 | 非 X11 坐标（Wayland） | 已绕开 | 不用坐标：popup surface 交给合成器摆位。XWayland 应用仍走 X11 窗口 |
-| 界面缩放（DPI） | 已接 | Wayland 原生焦点取 wl_output / xdg-output（分数缩放经 wp_viewporter），经 `host.display` 上报；X11 / XWayland **恒报 scale=1**（根窗口坐标与位图同单位，无 viewporter；曾按 `Xft.dpi` 放大位图会让 `placePanel` 钳到左上角，GH#215）。服务端 `wind_ui::dpi::scale_for_point` 统一按上报值光栅化 |
+| 界面缩放（DPI） | 已接 | Wayland 会话取 wl_output / xdg-output（分数缩放经 wp_viewporter；XWayland 焦点同样用它光栅化），纯 X11 取 `Xft.dpi`（回退 `GDK_SCALE`）；经 `host.display` 上报。XWayland 落点：GTK/Qt 报的是设备像素光标，须经 `x11RootFromDevice` 折回逻辑根坐标再摆窗（否则偏左上，GH#215）。服务端 `wind_ui::dpi::scale_for_point` 统一按上报值光栅化 |
 
 ## 协议同步铁律
 

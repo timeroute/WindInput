@@ -95,6 +95,10 @@ public:
     bool menuOpen() const;
     /// 有菜单相关的键盘活动（按键转给服务端的那一刻）：空闲计时重新起算。
     void noteMenuActivity();
+    /// X11 会话的界面缩放因子：根窗口 RESOURCE_MANAGER 里的 `Xft.dpi / 96`（桌面环境设缩放时都会写它），
+    /// 没有时看环境变量 `GDK_SCALE`，再没有按 1.0。已连接上 X 才读得到；没连过（还没显示过候选窗）
+    /// 时在这里连一次——只在「没有连接」时才连，不会重连销毁现有窗口。
+    double hostScale();
     /// 工作区（根窗口，不分显示器）。还没连上 / 连接已坏时返回空（不在这里重连）。
     std::optional<Rect> screenWorkArea();
     /// 当前指针位置（根窗口坐标）。还没连上 / 连接已坏时返回空（不在这里重连）。

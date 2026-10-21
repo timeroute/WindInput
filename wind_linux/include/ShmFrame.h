@@ -79,6 +79,13 @@ private:
 /// 坐标系：屏幕左上为原点、y 向下（X11 根窗口坐标 = wire 坐标）。
 Rect placePanel(int32_t x, int32_t y, int32_t w, int32_t h, const Rect& workArea, bool absolute);
 
+/// Wayland 会话下，GTK/Qt 前端把光标矩形按 `scale` 乘成**设备像素**再交给 Fcitx
+/// （`SetCursorRectV2` / `devicePixelRatio`）；XWayland 根窗口与 `ConfigureWindow` 用的却是
+/// **合成器逻辑像素**。把设备像素折回逻辑像素，候选窗才跟得上光标——否则落点偏小，再叠加
+/// 按 scale 放大的位图，就容易被 `placePanel` 钳到工作区左上角（GH#215）。
+/// `scale <= 1.01` 时原样返回。
+std::pair<int32_t, int32_t> x11RootFromDevice(int32_t deviceX, int32_t deviceY, double scale);
+
 /// 光栅浮层（CMD_OVERLAY_FRAME）的落位：返回**窗口**矩形（尺寸 = 位图尺寸）。服务端拿不到
 /// 屏幕几何，只给「首选点 + 备选点」或「锚点 + 留白」，这里按工作区选定，公式逐条对位
 /// Windows 各窗口的本地定位（`status_tip.rs` / `toast.rs` / `tooltip.rs`）：

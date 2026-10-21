@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cmath>
 #include <cstring>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -98,6 +99,14 @@ bool ShmFrameReader::snapshot(SharedFrame& out) const
     const auto* pix = static_cast<const uint8_t*>(ptr_) + sizeof(SharedRenderHeader);
     out.bgra.assign(pix, pix + need);
     return true;
+}
+
+std::pair<int32_t, int32_t> x11RootFromDevice(int32_t deviceX, int32_t deviceY, double scale)
+{
+    if (!(scale > 1.01)) {
+        return {deviceX, deviceY};
+    }
+    return {int32_t(std::lround(deviceX / scale)), int32_t(std::lround(deviceY / scale))};
 }
 
 Rect placePanel(int32_t x, int32_t y, int32_t w, int32_t h, const Rect& wa, bool absolute)

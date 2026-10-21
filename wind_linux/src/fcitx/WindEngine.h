@@ -180,6 +180,9 @@ private:
     ShmFrameReader panelShm_[2];
     FullscreenReporter fullscreen_;
     std::unique_ptr<X11CandidatePanel> panel_;
+    /// 最近一次 `host.display` 上报的界面缩放（1.0 = 100%）。`sendCaretUpdate` 在 Wayland
+    /// 会话里把设备像素光标折回 X11 逻辑坐标时用。
+    double lastHostScale_ = 1.0;
     /// Wayland 原生应用（frontend wayland_v2）的候选窗：popup surface，由合成器摆位。没有 Wayland
     /// 支持（编译时缺 libwayland）或不在 Wayland 会话时为空。
 #ifdef WIND_HAVE_WAYLAND
