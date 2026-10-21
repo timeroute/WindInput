@@ -6,7 +6,6 @@
 #include <fcitx-utils/log.h>
 
 #include <algorithm>
-#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -1342,62 +1341,6 @@ void X11CandidatePanel::flushMenuMotion()
     if (cb_.menuPointer) {
         cb_.menuPointer(MENU_POINTER_MOTION, 0, x, y);
     }
-}
-
-namespace {
-
-/// 从 RESOURCE_MANAGER 文本里取 `Xft.dpi`（行首、冒号后空白任意）。取不到返回 0。
-double parseXftDpi(const std::string& rm)
-{
-    size_t pos = 0;
-    while (pos < rm.size()) {
-        size_t end = rm.find('\n', pos);
-        if (end == std::string::npos) {
-            end = rm.size();
-        }
-        const std::string line = rm.substr(pos, end - pos);
-        pos = end + 1;
-        if (line.compare(0, 8, "Xft.dpi:") == 0) {
-            return std::atof(line.c_str() + 8);
-        }
-    }
-    return 0.0;
-}
-
-double clampScale(double s)
-{
-    s = std::round(s * 100.0) / 100.0;
-    return s < 1.0 ? 1.0 : (s > 4.0 ? 4.0 : s);
-}
-
-} // namespace
-
-double X11CandidatePanel::hostScale()
-{
-    if (!conn_) {
-        ensureConnection(); // 没有连接才连：不会销毁任何现有窗口 / 事件源
-    }
-    if (connectionUsable() && screen_) {
-        xcb_get_property_cookie_t ck = xcb_get_property(
-            conn_, 0, screen_->root, XCB_ATOM_RESOURCE_MANAGER, XCB_ATOM_STRING, 0, 65536);
-        if (xcb_get_property_reply_t* r = xcb_get_property_reply(conn_, ck, nullptr)) {
-            const int len = xcb_get_property_value_length(r);
-            const double dpi =
-                len > 0 ? parseXftDpi(std::string(static_cast<const char*>(xcb_get_property_value(r)),
-                                                  size_t(len)))
-                        : 0.0;
-            std::free(r);
-            if (dpi > 0.0) {
-                return clampScale(dpi / 96.0);
-            }
-        }
-    }
-    if (const char* gdk = std::getenv("GDK_SCALE"); gdk && *gdk) {
-        if (double v = std::atof(gdk); v > 0.0) {
-            return clampScale(v);
-        }
-    }
-    return 1.0;
 }
 
 bool X11CandidatePanel::connectionUsable() const

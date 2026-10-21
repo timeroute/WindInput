@@ -518,11 +518,17 @@ void WindEngine::sendHostDisplay(fcitx::InputContext* ic)
     //  · Wayland 原生应用没有可用的光标坐标（候选窗由合成器摆位）→ 别等坐标；
     //  · 界面缩放：服务端按它光栅化（字号 / 几何都是缩放后的物理像素）。
     // 每次获焦都重报（X11 应用报 false），免得上一个焦点的状态留在服务端；服务重启也不丢。
+    //
+    // X11 / XWayland 的 scale **恒为 1.0**：根窗口坐标与 XCB 窗口尺寸同单位（像素），
+    // wind-ui 的 `px_per_unit` 在 Linux 上也是 1；没有 viewporter 把放大位图折回逻辑尺寸。
+    // 曾按 `Xft.dpi` / `GDK_SCALE` 上报（150%/166% 等）→ 服务端把候选窗光栅成更大位图 →
+    // `placePanel` 相对根窗口工作区一钳就把窗口钉到左上角（GH#215）。
+    // 只有 Wayland 原生焦点才取输出缩放：贴图侧用 buffer scale / wp_viewporter 折回逻辑尺寸。
     if (!ensureConnected()) {
         return;
     }
     bool caretFree = false;
-    double scale = panel_->hostScale();
+    double scale = 1.0;
 #ifdef WIND_HAVE_WAYLAND
     if (wlPanel_ && wlPanel_->handles(ic)) {
         caretFree = true;
@@ -530,7 +536,7 @@ void WindEngine::sendHostDisplay(fcitx::InputContext* ic)
     }
     if (wlPanel_) {
         // layer-shell 上的气泡、Toast、工具栏、软键盘不论焦点在哪种应用都按这个缩放光栅化，
-        // 贴图时要按同一个数折回逻辑尺寸
+        // 贴图时要按同一个数折回逻辑尺寸。XWayland 焦点时与上面同为 1.0（见设计文档已知限制）。
         wlPanel_->setReportedScale(scale);
     }
 #endif
