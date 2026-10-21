@@ -404,8 +404,9 @@ DBus 客户端能直接断言 `ForwardKey` 序列；代价是只作用于当前�
    较新的 GNOME 是否有变化未验证。
 11. **Wayland 下工具栏 / 软键盘记住的位置可能跳角（已知限制）**：Wayland 面板坐标的单位是「合成器逻辑
    坐标 × 服务端此刻的光栅化缩放」（§5b / `OverlayInput.h`「Wayland 面板坐标」），而光栅化缩放跟着焦点
-   走：候选窗走 XWayland 时取协议缩放 N（`xProtocolScale`，GNOME 分数缩放），原生 popup 取输出的分数缩放，
-   纯 X11 取 `Xft.dpi`。焦点在这两种窗口之间切换时，记住的落点会按两个缩放的比值跳一次。未修。
+   走：XWayland 应用取 `Xft.dpi`，原生 Wayland 应用取输出缩放。两者不一致时（例如输出 150%、`Xft.dpi`
+   仍是 96），同一个落点在两种焦点下换算出的锚点不同，记住的位置会在记录点和默认角之间跳。只在混合
+   缩放配置下出现，未修。
 12. **软键盘不跟物理 Shift 换层（已知限制）**：Windows / macOS 上物理按住 Shift（或开着大写锁定）时软键盘
    切到第二层（上档字符）；Linux 服务端读不到全局修饰键状态（`soft_keyboard.rs` 的 `MODIFIER_POLLS`），
    按住 Shift 不换层。点软键盘自己的 Shift 键照常切换。

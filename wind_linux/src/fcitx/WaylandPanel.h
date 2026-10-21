@@ -112,9 +112,6 @@ public:
     /// 尺寸（分数缩放下也准），没有 xdg-output 时退回 wl_output 的整数缩放；候选窗出现过后跟着它
     /// 进入的输出走，之前用第一个输出。还没连上 / 没有输出信息时返回 1.0。
     double scale() const;
-    /// 全部 xdg-output 逻辑矩形的包围盒尺寸（宽, 高）。还没收到逻辑尺寸时返回空。
-    /// 和 X 根窗口尺寸比，得到 Mutter 的协议缩放 N（见 `xProtocolScale`）。
-    std::optional<std::pair<int32_t, int32_t>> logicalLayoutSize() const;
     /// 告知本类「服务端此刻按多大的缩放在光栅化」。贴图时按它折回逻辑尺寸——帧里的缩放字段是
     /// 取整的，分数缩放下不能用。引擎每次向服务端上报缩放时同步给这里。
     void setReportedScale(double s) { reportedScale_ = s > 0 ? s : 1.0; }

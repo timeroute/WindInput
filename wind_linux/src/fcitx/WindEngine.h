@@ -97,10 +97,6 @@ private:
     /// `pos.*` 用同一来源的名字（`reportPanelPos` 的 output），两处要么都报要么都不报。
     HostOutput hostOutput(fcitx::InputContext* ic);
     void sendCaretUpdate(fcitx::InputContext* ic);
-    /// XWayland 协议坐标相对 Wayland 逻辑布局的倍数（Mutter 分数缩放 = ceil(最大缩放)，否则 1）。
-    double xWaylandProtocolScale() const;
-    /// 候选窗走 X11 窗口（不是合成器摆的 popup）时，把光标从客户端单位乘进 X 协议坐标。
-    void mapCaretToX(fcitx::InputContext* ic, int& x, int& y, int& h) const;
     uint16_t prevCharFor(fcitx::InputContext* ic);
     /// 修饰键单击 / CapsLock 状态通知：发一帧 eventType=UP 的 KeyEvent 并应用其响应。
     /// `toggles` 必须是真实锁定态——服务端拿**每一帧**的 toggles 校准大写锁定镜像，

@@ -702,37 +702,6 @@ double WaylandCandidatePanel::scale() const
     return o ? outputScale(*o) : 1.0;
 }
 
-std::optional<std::pair<int32_t, int32_t>> WaylandCandidatePanel::logicalLayoutSize() const
-{
-    bool any = false;
-    int32_t minX = 0, minY = 0, maxX = 0, maxY = 0;
-    for (const auto& up : outputs_) {
-        const Output& o = *up;
-        // 只用 xdg-output 报来的逻辑尺寸。模式像素 / 缩放会和协议放大绕在一起，不能拿来当逻辑包围盒。
-        if (o.logW <= 0 || o.logH <= 0) {
-            continue;
-        }
-        const int32_t x1 = o.logX + o.logW;
-        const int32_t y1 = o.logY + o.logH;
-        if (!any) {
-            minX = o.logX;
-            minY = o.logY;
-            maxX = x1;
-            maxY = y1;
-            any = true;
-        } else {
-            minX = std::min(minX, o.logX);
-            minY = std::min(minY, o.logY);
-            maxX = std::max(maxX, x1);
-            maxY = std::max(maxY, y1);
-        }
-    }
-    if (!any || maxX <= minX || maxY <= minY) {
-        return std::nullopt;
-    }
-    return std::make_pair(maxX - minX, maxY - minY);
-}
-
 void WaylandCandidatePanel::scaleMaybeChanged()
 {
     const double s = scale();

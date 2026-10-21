@@ -341,7 +341,7 @@ forwardKey 对某类应用确实无效时才值得做，目前没有这样的证
 | 小键盘 / 符号键映射 | keysym 走 US 布局反查 | 非 US 布局的 Shift 符号键（如德语 `§`）没有 VK，透传给宿主 |
 | 彩色 emoji | 已接（服务端文字后端） | CBDT（Noto Color Emoji）、COLR v0/v1、OpenType-SVG 实测可画；肤色 / ZWJ / 国旗 / 键帽按字体 GSUB 合成一个字形。依赖系统装彩色 emoji 字体（`.deb` Recommends `fonts-noto-color-emoji`），没有时画单色字形或方框。sbix 未实测、COLR v1 扫掠渐变降级为纯色，见 `wind-ui/src/text/linux/mod.rs` 模块头 |
 | 非 X11 坐标（Wayland） | 已绕开 | 不用坐标：popup surface 交给合成器摆位。XWayland 应用仍走 X11 窗口 |
-| 界面缩放（DPI） | 已接 | Wayland 会话取 wl_output / xdg-output（分数缩放经 wp_viewporter），纯 X11 取 `Xft.dpi`（回退 `GDK_SCALE`）；经 `host.display` 上报。GNOME 分数缩放下候选窗是 XWayland 窗口：协议坐标 = 逻辑坐标 × N（N = ceil(最大缩放)，整屏共用，GH#215）。这时光栅按 N，光标按 `xProtocolScale` / `chooseCaretFactor` 乘进协议坐标再摆。服务端 `wind_ui::dpi::scale_for_point` 统一按上报值光栅化 |
+| 界面缩放（DPI） | 已接 | Wayland 取 wl_output / xdg-output（分数缩放经 wp_viewporter），X11 取 `Xft.dpi`（回退 `GDK_SCALE`）；经 `host.display` 扩展信封上报，服务端 `wind_ui::dpi::scale_for_point` 统一按它光栅化 |
 
 ## 协议同步铁律
 
